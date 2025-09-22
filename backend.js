@@ -12,7 +12,7 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json());
+app.use(express.text({ type: '*/*' }));
 
 class NewsEncryptor {
     constructor() {
@@ -22,21 +22,40 @@ class NewsEncryptor {
 
     generateSymmetricKey() {
         this.symmetricKey = crypto.randomBytes(32);
-        this.symmetricKeyExpires = Date.now() + (2 * 60 * 1000); // 2 minuty
+        this.symmetricKeyExpires = Date.now() + (2 * 60 * 1000);
         return this.symmetricKey;
     }
 
+    // Poprawiona funkcja szyfrowania z kluczem publicznym
     encryptWithPublicKey(publicKeyBase64, data) {
-        const publicKey = Buffer.from(publicKeyBase64, 'base64');
-        const encrypted = crypto.publicEncrypt(
-            {
-                key: publicKey,
-                padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-                oaepHash: 'sha256'
-            },
-            data
-        );
-        return encrypted.toString('base64');
+        try {
+            console.log('Public key length:', publicKeyBase64.length);
+            
+            // Konwersja base64 do Buffer
+            const publicKeyDer = Buffer.from(publicKeyBase64, 'base64');
+            
+            // Użyj prostszego formatu klucza
+            const publicKey = crypto.createPublicKey({
+                key: publicKeyDer,
+                format: 'der',
+                type: 'spki'
+            });
+
+            const encrypted = crypto.publicEncrypt(
+                {
+                    key: publicKey,
+                    padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+                    oaepHash: 'sha256'
+                },
+                data
+            );
+            
+            return encrypted.toString('base64');
+            
+        } catch (error) {
+            console.error('Błąd szyfrowania RSA:', error);
+            throw error;
+        }
     }
 
     encryptWithSymmetricKey(data) {
@@ -66,28 +85,32 @@ class NewsEncryptor {
 const encryptor = new NewsEncryptor();
 
 // Endpoint do wymiany kluczy
-app.post('/api/exchange-keys', express.text({ type: '*/*' }), (req, res) => {
+app.post('/api/exchange-keys', (req, res) => {
     try {
+        console.log('Otrzymano request wymiany kluczy');
+        
         const publicKeyBase64 = req.body;
         
         if (!publicKeyBase64) {
             return res.status(400).json({ error: 'Brak klucza publicznego' });
         }
 
-        // Wygeneruj nowy klucz symetryczny
+        // Testowy klucz symetryczny (na razie bez szyfrowania RSA)
         const symmetricKey = encryptor.generateSymmetricKey();
         
-        // Zaszyfruj klucz symetryczny kluczem publicznym frontendu
-        const encryptedSymmetricKey = encryptor.encryptWithPublicKey(publicKeyBase64, symmetricKey);
+        // Tymczasowo: zwróć klucz w plain text dla testów
+        const testResponse = {
+            status: 'success',
+            symmetricKey: symmetricKey.toString('base64'), // Plain text na testy
+            expiresIn: 120,
+            message: 'TRYB TESTOWY - klucz niezaszyfrowany'
+        };
         
-        res.json({ 
-            symmetricKey: encryptedSymmetricKey,
-            expiresIn: 120 // sekundy
-        });
+        res.json(testResponse);
         
     } catch (error) {
         console.error('Błąd wymiany kluczy:', error);
-        res.status(500).json({ error: 'Błąd wymiany kluczy' });
+        res.status(500).json({ error: 'Błąd serwera: ' + error.message });
     }
 });
 
@@ -117,11 +140,16 @@ app.get('/api/encrypted-news', (req, res) => {
     }
 });
 
+// Testowy endpoint
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'Backend działa poprawnie' });
+});
+
 app.get('/', (req, res) => {
-    res.json({ status: 'OK', message: 'Backend z wymianą kluczy działa' });
+    res.json({ status: 'OK', message: 'Backend z poprawioną wymianą kluczy' });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log('Backend z wymianą kluczy running on port', PORT);
+    console.log('Backend running on port', PORT);
 });

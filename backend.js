@@ -16,69 +16,112 @@ app.use(express.json());
 
 class NewsEncryptor {
     constructor() {
-        this.secretKey = process.env.PRAWDA_ENCRYPTION_KEY || "testowy_klucz_32_znakow_123";
-        this.algorithm = 'aes-256-gcm';
+        this.symmetricKey = null;
+        this.symmetricKeyExpires = null;
     }
 
-    decrypt(encryptedData) {
-        try {
-            const key = crypto.scryptSync(this.secretKey, 'salt', 32);
-            const decipher = crypto.createDecipheriv(this.algorithm, key, Buffer.from(encryptedData.iv, 'hex'));
-            decipher.setAuthTag(Buffer.from(encryptedData.tag, 'hex'));
-            
-            let decrypted = decipher.update(encryptedData.content, 'hex', 'utf8');
-            decrypted += decipher.final('utf8');
-            return decrypted;
-        } catch (error) {
-            console.error('Błąd deszyfrowania:', error);
-            return 'Błąd odczytu';
-        }
+    generateSymmetricKey() {
+        this.symmetricKey = crypto.randomBytes(32);
+        this.symmetricKeyExpires = Date.now() + (2 * 60 * 1000); // 2 minuty
+        return this.symmetricKey;
     }
 
-    decryptObject(encryptedObj) {
-        const decrypted = {};
-        for (const [key, value] of Object.entries(encryptedObj)) {
-            if (key === 'id') {
-                decrypted[key] = value;
-            } else {
-                decrypted[key] = this.decrypt(value);
-            }
+    encryptWithPublicKey(publicKeyBase64, data) {
+        const publicKey = Buffer.from(publicKeyBase64, 'base64');
+        const encrypted = crypto.publicEncrypt(
+            {
+                key: publicKey,
+                padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+                oaepHash: 'sha256'
+            },
+            data
+        );
+        return encrypted.toString('base64');
+    }
+
+    encryptWithSymmetricKey(data) {
+        if (!this.symmetricKey || Date.now() > this.symmetricKeyExpires) {
+            this.generateSymmetricKey();
         }
-        return decrypted;
+
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-gcm', this.symmetricKey, iv);
+        
+        let encrypted = cipher.update(data, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        const authTag = cipher.getAuthTag();
+
+        return {
+            iv: iv.toString('hex'),
+            content: encrypted,
+            tag: authTag.toString('hex')
+        };
+    }
+
+    encryptNews(newsData) {
+        return this.encryptWithSymmetricKey(JSON.stringify(newsData));
     }
 }
 
 const encryptor = new NewsEncryptor();
 
-app.get('/api/news', (req, res) => {
+// Endpoint do wymiany kluczy
+app.post('/api/exchange-keys', express.text({ type: '*/*' }), (req, res) => {
+    try {
+        const publicKeyBase64 = req.body;
+        
+        if (!publicKeyBase64) {
+            return res.status(400).json({ error: 'Brak klucza publicznego' });
+        }
+
+        // Wygeneruj nowy klucz symetryczny
+        const symmetricKey = encryptor.generateSymmetricKey();
+        
+        // Zaszyfruj klucz symetryczny kluczem publicznym frontendu
+        const encryptedSymmetricKey = encryptor.encryptWithPublicKey(publicKeyBase64, symmetricKey);
+        
+        res.json({ 
+            symmetricKey: encryptedSymmetricKey,
+            expiresIn: 120 // sekundy
+        });
+        
+    } catch (error) {
+        console.error('Błąd wymiany kluczy:', error);
+        res.status(500).json({ error: 'Błąd wymiany kluczy' });
+    }
+});
+
+// Endpoint do pobierania zaszyfrowanych newsów
+app.get('/api/encrypted-news', (req, res) => {
     try {
         const newsPath = path.join(__dirname, 'news.json');
         
         if (!fs.existsSync(newsPath)) {
-            return res.json({ articles: [] });
+            return res.json({ error: 'Brak newsów' });
         }
 
-        const encryptedNews = JSON.parse(fs.readFileSync(newsPath, 'utf8'));
+        const newsData = JSON.parse(fs.readFileSync(newsPath, 'utf8'));
         
-        const decryptedNews = {
-            articles: encryptedNews.articles.map(article => 
-                encryptor.decryptObject(article)
-            )
-        };
+        if (!encryptor.symmetricKey) {
+            encryptor.generateSymmetricKey();
+        }
 
-        res.json(decryptedNews);
+        // Zaszyfruj newsy kluczem symetrycznym
+        const encryptedNews = encryptor.encryptNews(newsData);
+        
+        res.json(encryptedNews);
         
     } catch (error) {
         console.error('Error:', error);
-        res.json({ articles: [] });
+        res.status(500).json({ error: 'Błąd serwera' });
     }
 });
 
 app.get('/', (req, res) => {
-    res.json({ status: 'OK', message: 'Backend z nowym szyfrowaniem dziala' });
+    res.json({ status: 'OK', message: 'Backend z wymianą kluczy działa' });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log('Backend z nowym szyfrowaniem running on port', PORT);
+    console.log('Backend z wymianą kluczy running on port', PORT);
 });

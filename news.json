@@ -1,0 +1,40 @@
+{
+  "articles": [
+    {
+      "id": "1",
+      "title": "Nowa inwestycja w Grodzisku Mazowieckim",
+      "content": "W centrum miasta planowana jest budowa nowego centrum handlowego. Inwestycja ma się rozpocząć w przyszłym kwartale i potrwać około 18 miesięcy.",
+      "excerpt": "Planowana budowa centrum handlowego w centrum miasta",
+      "date": "2024-01-15",
+      "author": "Redakcja Prawda",
+      "category": "aktualnosci",
+      "image": "https://picsum.photos/800/600?random=1",
+      "verified": true,
+      "priority": "high"
+    },
+    {
+      "id": "2", 
+      "title": "Remont ulicy Warszawskiej",
+      "content": "W weekend 20-21 stycznia planowany jest remont ulicy Warszawskiej. Ruch będzie odbywał się wahadłowo.",
+      "excerpt": "Prace drogowe w nadchodzący weekend",
+      "date": "2024-01-14",
+      "author": "Redakcja Prawda",
+      "category": "komunikacja",
+      "image": "https://picsum.photos/800/600?random=2",
+      "verified": true,
+      "priority": "medium"
+    },
+    {
+      "id": "3",
+      "title": "Koncert charytatywny w Domu Kultury",
+      "content": "W najbliższą sobotę odbędzie się koncert charytatywny na rzecz lokalnego schroniska.",
+      "excerpt": "Wydarzenie charytatywne w nadchodzący weekend",
+      "date": "2024-01-13",
+      "author": "Redakcja Prawda",
+      "category": "kultura",
+      "image": "https://picsum.photos/800/600?random=3",
+      "verified": false,
+      "priority": "low"
+    }
+  ]
+}

@@ -17,38 +17,22 @@ app.use(express.json());
 class NewsEncryptor {
     constructor() {
         this.secretKey = process.env.PRAWDA_ENCRYPTION_KEY || "testowy_klucz_32_znakow_123";
-        this.algorithm = 'aes-256-ctr';
-    }
-
-    encrypt(text) {
-        const iv = crypto.randomBytes(16);
-        const cipher = crypto.createCipher(this.algorithm, this.secretKey);
-        const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
-        return {
-            iv: iv.toString('hex'),
-            content: encrypted.toString('hex')
-        };
+        this.algorithm = 'aes-256-gcm';
     }
 
     decrypt(encryptedData) {
-        const decipher = crypto.createDecipher(this.algorithm, this.secretKey);
-        const decrypted = Buffer.concat([
-            decipher.update(Buffer.from(encryptedData.content, 'hex')),
-            decipher.final()
-        ]);
-        return decrypted.toString('utf8');
-    }
-
-    encryptObject(obj) {
-        const encrypted = {};
-        for (const [key, value] of Object.entries(obj)) {
-            if (key === 'id') {
-                encrypted[key] = value;
-            } else {
-                encrypted[key] = this.encrypt(String(value));
-            }
+        try {
+            const key = crypto.scryptSync(this.secretKey, 'salt', 32);
+            const decipher = crypto.createDecipheriv(this.algorithm, key, Buffer.from(encryptedData.iv, 'hex'));
+            decipher.setAuthTag(Buffer.from(encryptedData.tag, 'hex'));
+            
+            let decrypted = decipher.update(encryptedData.content, 'hex', 'utf8');
+            decrypted += decipher.final('utf8');
+            return decrypted;
+        } catch (error) {
+            console.error('Błąd deszyfrowania:', error);
+            return 'Błąd odczytu';
         }
-        return encrypted;
     }
 
     decryptObject(encryptedObj) {
@@ -91,10 +75,10 @@ app.get('/api/news', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.json({ status: 'OK', message: 'Backend z szyfrowaniem dziala' });
+    res.json({ status: 'OK', message: 'Backend z nowym szyfrowaniem dziala' });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log('Backend z szyfrowaniem running on port', PORT);
+    console.log('Backend z nowym szyfrowaniem running on port', PORT);
 });

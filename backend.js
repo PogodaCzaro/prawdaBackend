@@ -1,112 +1,46 @@
 const express = require('express');
+const cors = require('cors');
 const crypto = require('crypto');
 const fs = require('fs');
-const path = require('path');
 require('dotenv').config();
 
 const app = express();
+
+// Dodaj CORS - to pozwoli frontendowi na łaczenie się
+app.use(cors({
+    origin: ['http://localhost:3000', 'https://twoj-frontend.vercel.app'],
+    credentials: true
+}));
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-class NewsEncryptor {
-    constructor() {
-        this.secretKey = process.env.ENCRYPTION_KEY;
-        if (!this.secretKey) {
-            console.error('BRAK ENCRYPTION_KEY w .env');
-        }
-        this.algorithm = 'aes-256-ctr';
-    }
-
-    encrypt(text) {
-        try {
-            const iv = crypto.randomBytes(16);
-            const cipher = crypto.createCipher(this.algorithm, this.secretKey);
-            const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
-            return {
-                iv: iv.toString('hex'),
-                content: encrypted.toString('hex')
-            };
-        } catch (error) {
-            console.error('Encryption error:', error);
-            return null;
-        }
-    }
-
-    decrypt(encryptedData) {
-        try {
-            const decipher = crypto.createDecipher(this.algorithm, this.secretKey);
-            const decrypted = Buffer.concat([
-                decipher.update(Buffer.from(encryptedData.content, 'hex')),
-                decipher.final()
-            ]);
-            return decrypted.toString('utf8');
-        } catch (error) {
-            console.error('Decryption error:', error);
-            return null;
-        }
-    }
-
-    encryptObject(obj) {
-        const encrypted = {};
-        for (const [key, value] of Object.entries(obj)) {
-            if (key === 'id') {
-                encrypted[key] = value;
-            } else {
-                const encryptedValue = this.encrypt(String(value));
-                if (encryptedValue) {
-                    encrypted[key] = encryptedValue;
-                }
-            }
-        }
-        return encrypted;
-    }
-
-    decryptObject(encryptedObj) {
-        const decrypted = {};
-        for (const [key, value] of Object.entries(encryptedObj)) {
-            if (key === 'id') {
-                decrypted[key] = value;
-            } else {
-                decrypted[key] = this.decrypt(value);
-            }
-        }
-        return decrypted;
-    }
-}
-
-const encryptor = new NewsEncryptor();
-
+// Tymczasowo wyłącz auth dla testów
 app.get('/api/news', (req, res) => {
     try {
-        console.log('Request received:', req.headers);
+        console.log('Request received from:', req.headers.origin);
         
-        const authHeader = req.headers.authorization;
-        if (!authHeader || authHeader !== process.env.API_KEY) {
-            console.log('Unauthorized access attempt');
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
+        // Tymczasowo zakomentuj auth
+        // const authHeader = req.headers.authorization;
+        // if (!authHeader || authHeader !== process.env.PRAWDA_API_KEY) {
+        //     return res.status(401).json({ error: 'Unauthorized' });
+        // }
 
-        const newsPath = path.join(__dirname, 'news.json');
-        console.log('Looking for news at:', newsPath);
+        const newsPath = require('path').join(__dirname, 'news.json');
+        console.log('Reading news from:', newsPath);
         
         if (!fs.existsSync(newsPath)) {
-            console.log('news.json not found');
             return res.status(500).json({ error: 'News file not found' });
         }
 
-        const encryptedNews = JSON.parse(fs.readFileSync(newsPath, 'utf8'));
-        console.log('Decrypting', encryptedNews.articles.length, 'articles');
+        const newsData = JSON.parse(fs.readFileSync(newsPath, 'utf8'));
+        console.log('Sending news:', newsData.articles.length, 'articles');
         
-        const decryptedNews = {
-            articles: encryptedNews.articles.map(article => 
-                encryptor.decryptObject(article)
-            )
-        };
-
-        res.json(decryptedNews);
+        res.json(newsData);
+        
     } catch (error) {
-        console.error('Server error:', error);
+        console.error('Error:', error);
         res.status(500).json({ error: 'Server error: ' + error.message });
     }
 });
@@ -114,20 +48,11 @@ app.get('/api/news', (req, res) => {
 app.get('/', (req, res) => {
     res.json({ 
         status: 'OK', 
-        message: 'Prawda backend is running on Render!',
+        message: 'Prawda backend is running with CORS',
         timestamp: new Date().toISOString()
     });
 });
 
-app.get('/debug', (req, res) => {
-    res.json({
-        port: process.env.PORT,
-        hasEncryptionKey: !!process.env.ENCRYPTION_KEY,
-        hasApiKey: !!process.env.API_KEY
-    });
-});
-
 app.listen(PORT, () => {
-    console.log(`Prawda backend running on port ${PORT}`);
-    console.log(`Encryption key: ${process.env.ENCRYPTION_KEY ? 'SET' : 'MISSING'}`);
+    console.log(`Backend running on port ${PORT}`);
 });
